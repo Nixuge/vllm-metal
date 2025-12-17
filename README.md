@@ -14,16 +14,18 @@ This plugin enables vLLM to run on Apple Silicon Macs using Metal Performance Sh
 
 - macOS 12.3 or later
 - Apple Silicon Mac
-- Python 3.10 or later
+- Python 3.11 or later
 - PyTorch 2.1.0 or later with MPS support
 - vLLM 0.12.0 or later
 
 ## Installation
 
-### From PyPI (when available)
+### Quick Install
+
+Install the latest release with a single command:
 
 ```bash
-uv pip install vllm-metal
+curl -fsSL https://raw.githubusercontent.com/ericcurtin/vllm-project/main/install.sh | bash
 ```
 
 ### From Source
