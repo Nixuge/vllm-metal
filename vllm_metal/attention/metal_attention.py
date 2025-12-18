@@ -72,6 +72,16 @@ class MetalAttentionImpl(AttentionImpl):
                 "falling back to dense attention"
             )
 
+    def process_weights_after_loading(self, act_dtype: torch.dtype) -> None:
+        """Process weights after model loading.
+
+        This is called after the model weights are loaded to perform
+        any necessary post-processing. For Metal attention, we just
+        ensure alibi slopes are on the correct device/dtype.
+        """
+        if self.alibi_slopes_tensor is not None:
+            self.alibi_slopes_tensor = self.alibi_slopes_tensor.to(dtype=act_dtype)
+
     def forward(
         self,
         query: torch.Tensor,

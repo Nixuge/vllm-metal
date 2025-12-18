@@ -30,9 +30,9 @@ class MetalPlatform(Platform):
     """Platform implementation for Apple Metal backend."""
 
     _enum = PlatformEnum.OOT  # Out-of-tree platform
-    device_name: str = "metal"
-    device_type: str = "metal"
-    dispatch_key: str = "METAL"
+    device_name: str = "mps"
+    device_type: str = "mps"
+    dispatch_key: str = "MPS"
 
     supported_quantization = ["awq", "gptq", "compressed-tensors"]
 
@@ -243,10 +243,10 @@ class MetalPlatform(Platform):
         dtype,
         kv_cache_dtype,
         block_size: int,
-        use_v1: bool,
         use_mla: bool,
         has_sink: bool,
         use_sparse: bool,
+        attn_type: str | None = None,
     ) -> str:
         """Get the attention backend class path for Metal.
 

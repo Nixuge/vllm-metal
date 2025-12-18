@@ -252,6 +252,9 @@ class MetalAttentionMetadataBuilder(AttentionMetadataBuilder):
 class MetalAttentionBackend(AttentionBackend):
     """Attention backend for Apple Metal."""
 
+    # Whether this backend accepts an output buffer (for in-place operations)
+    accept_output_buffer: bool = False
+
     @staticmethod
     def get_name() -> str:
         return "METAL"
@@ -308,3 +311,12 @@ class MetalAttentionBackend(AttentionBackend):
     def get_supported_head_sizes() -> list[int]:
         """Get supported attention head sizes."""
         return [64, 80, 96, 112, 128, 192, 256]
+
+    @classmethod
+    def get_required_kv_cache_layout(cls):
+        """Return the required KV cache layout for this backend.
+
+        Returns None to indicate no specific layout requirement,
+        allowing the framework to use its default layout.
+        """
+        return None

@@ -112,7 +112,30 @@ download_and_install_wheel() {
     partial-json-parser \
     blake3 \
     cbor2 \
-    pyzmq; then
+    pyzmq \
+    cachetools \
+    regex \
+    protobuf \
+    "fastapi[standard]" \
+    "llguidance>=1.3.0,<1.4.0" \
+    "outlines_core==0.2.11" \
+    "lark==1.2.2" \
+    "xgrammar==0.1.27" \
+    "opencv-python-headless>=4.11.0" \
+    six \
+    "setuptools>=77.0.3,<81.0.0" \
+    "depyf==0.20.0" \
+    watchfiles \
+    python-json-logger \
+    scipy \
+    ninja \
+    pybase64 \
+    setproctitle \
+    "openai-harmony>=0.0.3" \
+    "anthropic==0.71.0" \
+    "model-hosting-container-standards>=0.1.9,<1.0.0" \
+    "tokenizers>=0.21.1" \
+    "numba==0.61.2"; then
     error "Failed to install vllm dependencies."
     exit 1
   fi
