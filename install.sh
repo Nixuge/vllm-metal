@@ -153,10 +153,10 @@ main() {
   success "Installation complete!"
   echo ""
   echo "To use vllm, activate the virtual environment:"
-  echo "  source $venv"
+  echo "  source $venv/bin/activate"
   echo ""
   echo "Or add the venv to your PATH:"
-  echo "  export PATH=\"$venv:\$PATH\""
+  echo "  export PATH=\"$venv/bin:\$PATH\""
 }
 
 main "$@"
