@@ -75,17 +75,6 @@ download_and_install_wheel() {
   fi
 
   success "Installed ${package_name}"
-
-  # Install vllm with VLLM_TARGET_DEVICE=empty to skip native extension builds.
-  # vllm-metal replaces the backend with MLX, so native CUDA/CPU extensions aren't needed.
-  echo ""
-  echo "Installing vllm (skipping native extensions for Metal backend)..."
-  if ! VLLM_TARGET_DEVICE=empty uv pip install --upgrade vllm; then
-    error "Failed to install vllm."
-    exit 1
-  fi
-
-  success "Installed vllm"
 }
 
 main() {
@@ -129,18 +118,31 @@ main() {
 
   ensure_venv
 
-  local release_data
-  release_data=$(fetch_latest_release "$repo_owner" "$repo_name")
+  local vllm_v="0.13.0"
+  local url_base="https://github.com/vllm-project/vllm/releases/download"
+  local filename="vllm-$vllm_v.tar.gz"
+  curl -OL $url_base/v$vllm_v/$filename
+  tar xvf $filename
+  cd vllm-$vllm_v
+  uv pip install -r requirements/cpu.txt --index-strategy unsafe-best-match
+  uv pip install -e .
+  cd -
+  rm -rf vllm-$vllm_v*
 
-  local wheel_url
-  wheel_url=$(extract_wheel_url "$release_data")
+  if ! [[ -n "$local_lib" && -f "$local_lib" ]]; then
+    local release_data
+    release_data=$(fetch_latest_release "$repo_owner" "$repo_name")
 
-  if [[ -z "$wheel_url" ]]; then
-    error "No wheel file found in the latest release."
-    exit 1
+    local wheel_url
+    wheel_url=$(extract_wheel_url "$release_data")
+
+    if [[ -z "$wheel_url" ]]; then
+      error "No wheel file found in the latest release."
+      exit 1
+    fi
+
+    download_and_install_wheel "$wheel_url" "$package_name"
   fi
-
-  download_and_install_wheel "$wheel_url" "$package_name"
 
   echo ""
   success "Installation complete!"

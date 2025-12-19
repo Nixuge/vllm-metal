@@ -26,64 +26,21 @@ smoke_test() {
 }
 
 installs() {
-  section "Installing vllm dependencies"
-
-  # Install vllm dependencies first (macOS-compatible packages)
-  uv pip install pydantic cbor2 msgspec cloudpickle prometheus-client fastapi uvicorn uvloop pillow \
-    tiktoken typing_extensions filelock py-cpuinfo aiohttp openai einops importlib_metadata mistral_common \
-    pyyaml requests tqdm sentencepiece gguf blake3 pyzmq regex protobuf setuptools depyf numba \
-    tokenizers cachetools partial-json-parser compressed-tensors torch transformers accelerate safetensors
-
   section "Installing vllm"
 
-  # Try to install vllm - first from wheel, then from source
-  VLLM_INSTALLED=false
-
-  if uv pip install --only-binary=:all: vllm 2>/dev/null; then
-    VLLM_INSTALLED=true
-    echo "vLLM installed from wheel"
-  elif is_apple_silicon; then
-    # On Apple Silicon, vllm wheels don't exist and source build requires Intel MKL
-    # which doesn't work on ARM. We can still run tests using the _compat.py fallbacks.
-    echo "WARNING: vLLM cannot be installed on macOS Apple Silicon (no wheels, source build requires Intel MKL)"
-    echo "Tests will run with fallback stubs from _compat.py"
-    echo "smoke_test will be skipped"
-  else
-    echo "No pre-built vLLM wheel available, building from source..."
-
-    # Ensure cmake is available
-    if ! command -v cmake &> /dev/null; then
-      if command -v brew &> /dev/null; then
-        brew install cmake ninja || true
-      fi
-    fi
-
-    if command -v cmake &> /dev/null; then
-      # Build vLLM from source with CPU target (no CUDA)
-      if VLLM_TARGET_DEVICE=cpu MAX_JOBS=4 uv pip install vllm 2>&1; then
-        VLLM_INSTALLED=true
-        echo "vLLM built from source successfully"
-      fi
-    fi
-
-    if [ "$VLLM_INSTALLED" = false ]; then
-      error "Failed to install vLLM. vLLM is a mandatory dependency."
-      echo "Try installing cmake: brew install cmake ninja"
-      exit 1
-    fi
-  fi
-
-  # Verify vLLM is importable (if installed)
-  if [ "$VLLM_INSTALLED" = true ]; then
-    if ! python -c "import vllm" 2>/dev/null; then
-      error "vLLM installed but not importable"
-      exit 1
-    fi
-  fi
+  ./install.sh
 
   if is_apple_silicon; then
     if ! command -v shellcheck &> /dev/null; then
       brew install shellcheck
+    fi
+
+    if ! command -v cmake &> /dev/null; then
+      brew install cmake
+    fi
+
+    if ! command -v ninja &> /dev/null; then
+      brew install ninja
     fi
   fi
 }
@@ -111,12 +68,11 @@ main() {
   # shellcheck source=lib.sh disable=SC1091
   source "${script_dir}/lib.sh"
 
-  # Global variable set by installs()
-  VLLM_INSTALLED=false
-
   setup_dev_env
 
   installs
+  # shellcheck source=/dev/null
+  source .venv/bin/activate
 
   linters
 
@@ -126,12 +82,7 @@ main() {
   section "Verifying package import"
   python -c "import vllm_metal; print('vllm_metal imported successfully')"
 
-  if [ "$VLLM_INSTALLED" = true ]; then
-    smoke_test
-  else
-    section "Skipping smoke_test (vLLM not installed)"
-    echo "smoke_test requires vLLM to be installed"
-  fi
+  smoke_test
 }
 
 main "$@"

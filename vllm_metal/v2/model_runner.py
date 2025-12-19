@@ -44,54 +44,12 @@ def _patched_bincount_metal(
                 prompt_bin_mask[token] = 1
 
 
-# Patch bincount BEFORE any vLLM modules that use it are imported
-try:
-    import vllm.v1.worker.gpu.sample.penalties as penalties_module
-
-    penalties_module.bincount = _patched_bincount_metal
-    logger.debug("Patched penalties_module.bincount for Metal")
-except ImportError:
-    pass
-
-# Patch states module for MPS compatibility (UVA / unified memory)
-# Apple Silicon has true unified memory, so we can use regular tensors
-try:
-    import vllm.v1.worker.gpu.states as states_module
-
-    # Apple Silicon has unified memory - similar to UVA
-    states_module.is_uva_available = lambda: True
-
-    # Patch UvaBuffer to work with MPS unified memory
-    class _MetalUvaBuffer:
-        """MPS-compatible UvaBuffer using unified memory.
-
-        Apple Silicon has true unified memory - CPU and GPU share the same
-        physical memory. However, PyTorch MPS doesn't share memory between
-        CPU and MPS tensors like CUDA UVA does.
-
-        Solution: Use CPU tensors for both cpu and gpu attributes.
-        MPS operations can accept CPU tensors directly (with auto data movement).
-        This ensures writes to cpu/np are immediately visible to gpu.
-        """
-
-        def __init__(self, *size, dtype):
-            # Keep everything on CPU - this is the source of truth
-            self.cpu = torch.zeros(*size, dtype=dtype, device="cpu")
-            self.np = self.cpu.numpy()
-            # gpu is the same tensor - MPS can accept CPU tensors
-            # This ensures all modifications are visible to both
-            self.gpu = self.cpu
-
-    states_module.UvaBuffer = _MetalUvaBuffer
-    logger.debug("Patched states_module for Metal unified memory")
-except ImportError as e:
-    logger.warning(f"Failed to patch states module: {e}")
-
 # =============================================================================
 # Patch BlockTables with Metal-compatible implementation (pure PyTorch)
+# vLLM 0.11.0 uses vllm.v1.worker.block_table (not gpu.block_table)
 # =============================================================================
 try:
-    import vllm.v1.worker.gpu.block_table as block_table_module
+    import vllm.v1.worker.block_table as block_table_module
 
     from vllm_metal.v2.metal_block_table import MetalBlockTables
 
@@ -100,60 +58,6 @@ try:
     logger.debug("Patched BlockTables with MetalBlockTables for Metal")
 except ImportError as e:
     logger.warning(f"Failed to patch block_table module: {e}")
-
-# Patch input_batch functions BEFORE importing GPUModelRunner
-try:
-    import vllm.v1.worker.gpu.input_batch as input_batch_module
-
-    from vllm_metal.v2.input_batch import (
-        combine_sampled_and_draft_tokens,
-        post_update,
-        prepare_pos_seq_lens,
-        prepare_prefill_inputs,
-    )
-
-    input_batch_module.prepare_prefill_inputs = prepare_prefill_inputs
-    input_batch_module.prepare_pos_seq_lens = prepare_pos_seq_lens
-    input_batch_module.combine_sampled_and_draft_tokens = (
-        combine_sampled_and_draft_tokens
-    )
-    input_batch_module.post_update = post_update
-    logger.debug("Patched input_batch module functions for Metal")
-except ImportError as e:
-    logger.warning(f"Failed to patch input_batch module: {e}")
-
-# Patch penalties module - uses Triton kernels
-try:
-    import vllm.v1.worker.gpu.sample.penalties as penalties_module
-
-    from vllm_metal.v2.penalties import apply_penalties_and_temperature
-
-    penalties_module.apply_penalties_and_temperature = apply_penalties_and_temperature
-    logger.debug("Patched penalties_module.apply_penalties_and_temperature for Metal")
-except ImportError as e:
-    logger.warning(f"Failed to patch penalties module: {e}")
-
-# Patch gumbel module - uses Triton kernel
-try:
-    import vllm.v1.worker.gpu.sample.gumbel as gumbel_module
-
-    from vllm_metal.v2.gumbel import gumbel_sample
-
-    gumbel_module.gumbel_sample = gumbel_sample
-    logger.debug("Patched gumbel_module.gumbel_sample for Metal")
-except ImportError as e:
-    logger.warning(f"Failed to patch gumbel module: {e}")
-
-# Patch async_utils module - uses CUDA streams
-try:
-    import vllm.v1.worker.gpu.async_utils as async_utils_module
-
-    from vllm_metal.v2.async_utils import MetalAsyncOutput
-
-    async_utils_module.AsyncOutput = MetalAsyncOutput
-    logger.debug("Patched async_utils_module.AsyncOutput for Metal")
-except ImportError as e:
-    logger.warning(f"Failed to patch async_utils module: {e}")
 
 
 # =============================================================================
@@ -230,38 +134,12 @@ class _MockCudaGraphManager:
         return None
 
 
-# Patch CudaGraphManager BEFORE importing GPUModelRunner
-try:
-    import vllm.v1.worker.gpu.cudagraph_utils as cudagraph_utils_module
-
-    cudagraph_utils_module.CudaGraphManager = _MockCudaGraphManager
-    logger.debug("Patched CudaGraphManager for Metal")
-except ImportError as e:
-    logger.warning(f"Failed to patch cudagraph_utils: {e}")
-
-
 # Now import the rest of vLLM modules (they will get our patched functions)
+# vLLM 0.11.0 module paths (no gpu. prefix)
 from vllm.model_executor.model_loader import get_model  # noqa: E402
 from vllm.v1.kv_cache_interface import KVCacheConfig  # noqa: E402
 from vllm.v1.utils import CpuGpuBuffer  # noqa: E402
-from vllm.v1.worker.gpu.attn_utils import (  # noqa: E402
-    init_attn_backend,
-    init_kv_cache,
-)
-
-# Use our Metal-compatible BlockTables (pure PyTorch, no Triton)
-# Note: block_table_module.BlockTables is already patched above
-from vllm.v1.worker.gpu.block_table import BlockTables  # noqa: E402
-from vllm.v1.worker.gpu.model_runner import GPUModelRunner  # noqa: E402
-
-# Patch states module's bincount reference
-try:
-    import vllm.v1.worker.gpu.states as states_module
-
-    states_module.bincount = _patched_bincount_metal
-    logger.debug("Patched states_module.bincount for Metal")
-except (ImportError, AttributeError):
-    pass
+from vllm.v1.worker.gpu_model_runner import GPUModelRunner  # noqa: E402
 
 
 @contextmanager
@@ -335,6 +213,33 @@ class MetalModelRunner(GPUModelRunner):
             if isinstance(v, CpuGpuBuffer):
                 v.gpu = v.cpu
 
+    def _init_device_properties(self) -> None:
+        """Initialize device properties for Metal/MPS.
+
+        Override parent's CUDA-specific implementation which calls
+        torch.cuda.get_device_properties().
+        """
+        # Metal doesn't have CUDA device properties, so we create mock values
+        # num_sms is used for some internal calculations in vLLM
+        from vllm_metal.utils import get_metal_device_info
+
+        info = get_metal_device_info()
+
+        # Create a mock device properties object
+        class MetalDeviceProperties:
+            def __init__(self, name: str, total_memory: int):
+                self.name = name
+                self.total_memory = total_memory
+                # Apple Silicon doesn't have SMs like NVIDIA GPUs
+                # Use GPU cores / 128 as a rough approximation
+                self.multi_processor_count = max(1, info.get("gpu_cores", 8) // 128)
+
+        self.device_properties = MetalDeviceProperties(
+            name=info.get("name", "Apple Silicon"),
+            total_memory=info.get("total_memory", 0),
+        )
+        self.num_sms = self.device_properties.multi_processor_count
+
     def _sync_device(self) -> None:
         """Synchronize the MPS/MLX device instead of CUDA."""
         import mlx.core as mx
@@ -359,45 +264,14 @@ class MetalModelRunner(GPUModelRunner):
     def initialize_kv_cache(self, kv_cache_config: KVCacheConfig) -> None:
         """Initialize KV cache for Metal backend.
 
-        This overrides GPUModelRunner's method to remove the FLASH_ATTN check.
-        Metal backend uses its own attention implementation.
+        Delegates to parent GPUModelRunner's implementation which handles
+        attention backend and KV cache initialization in vLLM 0.11.0.
         """
-        from copy import deepcopy
+        # Call parent implementation - it handles all initialization
+        super().initialize_kv_cache(kv_cache_config)
 
-        kv_cache_config = deepcopy(kv_cache_config)
-        self.kv_cache_config = kv_cache_config
-        block_sizes = [
-            kv_cache_group.kv_cache_spec.block_size
-            for kv_cache_group in kv_cache_config.kv_cache_groups
-        ]
-
-        self.block_tables = BlockTables(
-            block_sizes=block_sizes,
-            max_num_reqs=self.max_num_reqs,
-            max_num_batched_tokens=self.max_num_tokens,
-            max_model_len=self.max_model_len,
-            device=self.device,
-            pin_memory=self.pin_memory,
-        )
-
-        self.attn_backends, self.attn_metadata_builders = init_attn_backend(
-            self.kv_cache_config,
-            self.vllm_config,
-            self.device,
-        )
-
-        # Metal backend - no FLASH_ATTN check needed
-        logger.info(
-            f"Metal attention backends initialized: {list(self.attn_backends.keys())}"
-        )
-
-        self.kv_caches: list[torch.Tensor] = []
-        init_kv_cache(
-            self.kv_caches,
-            self.compilation_config.static_forward_context,
-            self.kv_cache_config,
-            self.attn_backends,
-            self.device,
-        )
-        # Attention groups are not supported.
-        self.attn_groups = []  # type: ignore
+        # Metal backend - log initialized backends
+        if hasattr(self, "attn_backends") and self.attn_backends:
+            logger.info(
+                f"Metal attention backends initialized: {list(self.attn_backends.keys())}"
+            )

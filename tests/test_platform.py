@@ -92,6 +92,7 @@ class TestMetalPlatform:
             dtype=None,
             kv_cache_dtype=None,
             block_size=16,
+            use_v1=True,
             use_mla=False,
             has_sink=False,
             use_sparse=False,

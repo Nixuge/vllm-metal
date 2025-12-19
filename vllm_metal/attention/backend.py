@@ -99,6 +99,8 @@ class MetalAttentionMetadataBuilder:
         self.kv_cache_spec = kv_cache_spec
         self.layer_names = layer_names or []
         self.vllm_config = vllm_config
+        # Metal doesn't support batch reordering optimization
+        self.reorder_batch_threshold: int | None = None
         # Handle device parameter - can be string or torch.device
         if device is None:
             self.device = torch.device("mps")
@@ -232,6 +234,11 @@ class MetalAttentionBackend(AttentionBackend):
         """Get the name of this backend."""
         return "metal"
 
+    @classmethod
+    def full_cls_name(cls) -> tuple[str, str]:
+        """Return fully qualified class name as (module, qualname)."""
+        return (cls.__module__, cls.__qualname__)
+
     @staticmethod
     def get_impl_cls() -> type["MetalAttentionImpl"]:
         """Get the implementation class."""
@@ -255,6 +262,7 @@ class MetalAttentionBackend(AttentionBackend):
         block_size: int,
         num_kv_heads: int,
         head_size: int,
+        cache_dtype_str: str = "auto",
     ) -> tuple[int, ...]:
         """Get the shape of the KV cache.
 
@@ -266,6 +274,7 @@ class MetalAttentionBackend(AttentionBackend):
             block_size: Tokens per block.
             num_kv_heads: Number of key-value heads.
             head_size: Size of each head.
+            cache_dtype_str: Cache dtype string (ignored for Metal).
 
         Returns:
             Shape tuple for the cache tensors (includes both K and V).

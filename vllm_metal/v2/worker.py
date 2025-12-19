@@ -12,7 +12,6 @@ from vllm.distributed import (
     set_custom_all_reduce,
 )
 from vllm.logger import init_logger
-from vllm.model_executor.layers.batch_invariant import init_batch_invariance
 from vllm.model_executor.utils import set_random_seed
 from vllm.platforms import current_platform
 from vllm.v1.utils import report_usage_stats
@@ -87,9 +86,6 @@ class MetalWorker(Worker):
             f"MLX available: {info.get('mlx_available', False)}, "
             f"Total memory: {info['total_memory'] / 1e9:.1f}GB"
         )
-
-        # Initialize batch invariance
-        init_batch_invariance()
 
         # Disable custom all reduce for Metal
         set_custom_all_reduce(False)
