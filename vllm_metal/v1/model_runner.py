@@ -312,7 +312,8 @@ class MetalModelRunner:
         generators = {}
         for i, sp in enumerate(sampling_params_list):
             if sp.temperature >= 1e-5:
-                gen = torch.Generator()
+                # Generator must be on the same device as the tensors (MPS or CPU)
+                gen = torch.Generator(device=self.device)
                 if sp.seed is not None:
                     gen.manual_seed(sp.seed)
                 generators[i] = gen
