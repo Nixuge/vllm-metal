@@ -416,7 +416,9 @@ class MetalModelRunner:
 
         # Convert MLX logits to torch and sample using vLLM's Sampler
         # Cast to float32 for numpy conversion (numpy doesn't support bfloat16)
-        logits_torch = mlx_to_torch(logits[:, -1, :].astype(mx.float32), device=self.device)
+        logits_torch = mlx_to_torch(
+            logits[:, -1, :].astype(mx.float32), device=self.device
+        )
         metadata = self._make_sampling_metadata([sampling_params], [[]])
         output = self._sampler.forward(logits_torch, metadata)
         next_token = int(output.sampled_token_ids[0, 0].item())
