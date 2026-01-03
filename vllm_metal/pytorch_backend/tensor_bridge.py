@@ -4,10 +4,19 @@
 Provides zero-copy conversion when possible using Apple Silicon's unified memory.
 """
 
+import logging
 from typing import Literal
 
 import mlx.core as mx
 import torch
+
+logger = logging.getLogger(__name__)
+
+# MPS has a 4GB (2^32 bytes) limit for MPSTemporaryNDArray allocations.
+# Metal may allocate multiple temporary buffers internally, so we use a
+# conservative threshold of 1GB to avoid hitting the limit.
+# See: https://github.com/anthropics/vllm-metal/issues/43
+_MPS_SAFE_SIZE_BYTES = 1 << 30  # 1GB
 
 # MLX to PyTorch dtype mapping
 MLX_TO_TORCH_DTYPE: dict[mx.Dtype, torch.dtype] = {
@@ -37,6 +46,33 @@ def get_torch_device() -> torch.device:
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def _get_tensor_size_bytes(array: mx.array) -> int:
+    """Calculate the size of an MLX array in bytes.
+
+    Args:
+        array: MLX array
+
+    Returns:
+        Size in bytes
+    """
+    return array.size * array.dtype.size
+
+
+def _is_safe_for_mps(array: mx.array) -> bool:
+    """Check if an array is safe to transfer to MPS without hitting size limits.
+
+    MPS has a 4GB limit for MPSTemporaryNDArray, but Metal may allocate
+    multiple temporary buffers internally. We use a conservative threshold.
+
+    Args:
+        array: MLX array to check
+
+    Returns:
+        True if safe to transfer to MPS, False if should stay on CPU
+    """
+    return _get_tensor_size_bytes(array) < _MPS_SAFE_SIZE_BYTES
 
 
 def torch_to_mlx(tensor: torch.Tensor) -> mx.array:
@@ -102,8 +138,19 @@ def mlx_to_torch(
         # Fallback to numpy path for unsupported dtypes
         raise ValueError(f"Unsupported MLX dtype: {array.dtype}")
 
-    # Move to target device
-    if device.type != "cpu":
+    # Move to target device, but check for MPS size limits first
+    if device.type == "mps":
+        if _is_safe_for_mps(array):
+            tensor = tensor.to(device)
+        else:
+            # Large tensor - keep on CPU to avoid MPS 4GB limit crash
+            # See: https://github.com/anthropics/vllm-metal/issues/43
+            logger.debug(
+                "Tensor too large for MPS (%d bytes > %d limit), keeping on CPU",
+                _get_tensor_size_bytes(array),
+                _MPS_SAFE_SIZE_BYTES,
+            )
+    elif device.type != "cpu":
         tensor = tensor.to(device)
 
     return tensor
