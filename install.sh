@@ -80,7 +80,7 @@ download_and_install_wheel() {
 main() {
   set -eu -o pipefail
 
-  local repo_owner="vllm-project"
+  local repo_owner="nixuge"
   local repo_name="vllm-metal"
   local package_name="vllm-metal"
 
