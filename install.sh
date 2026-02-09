@@ -1,7 +1,7 @@
 #!/bin/bash
 
 fetch_latest_release() {
-  local repo_owner="$1"
+  local repo_owner="vllm-project"
   local repo_name="$2"
 
   echo "Fetching latest release..." >&2
